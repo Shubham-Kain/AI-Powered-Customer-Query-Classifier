@@ -11,6 +11,14 @@ from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
 
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+if OPENAI_API_KEY is None:
+    raise RuntimeError(
+        "Missing OpenAI or OpenRouter API key. Set OPENAI_API_KEY or OPENROUTER_API_KEY in your environment."
+    )
+
 STOP_WORDS = ENGLISH_STOP_WORDS
 STEMMER = PorterStemmer()
 TOKEN_PATTERN = re.compile(r"\b\w+\b")
@@ -19,7 +27,7 @@ model = ChatOpenAI(
     model_name="poolside/laguna-s-2.1:free",
     temperature=1,
     openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+    openai_api_key=OPENAI_API_KEY,
 )
 
 def reply_to_llm(text):
@@ -120,19 +128,155 @@ def predict_label(model_components, text: str) -> str:
     return classifier.predict(vectorized_text)[0]
 
 
-st.title("Customer Query Classifier")
-models = load_models()
+# ======================================================================================
+# ------------------------------------ UI SECTION ---------------------------------------
+# Everything below this line is presentation-only. No classification/LLM logic changed.
+# ======================================================================================
 
-input_sms = st.text_area("Enter the query", height=150)
-if st.button("Predict"):
-    category_prediction = predict_label(models["category"], input_sms)
-    intent_prediction = predict_label(models["intent"], input_sms)
-    priority_prediction = predict_label(models["priority"], input_sms)
-    reply = reply_to_llm(input_sms)
+st.set_page_config(
+    page_title="Customer Query Classifier",
+    page_icon="🎧",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-    st.header("Predictions")
-    st.write(f"Category: {category_prediction}")
-    st.write(f"Intent: {intent_prediction}")
-    st.write(f"Priority: {priority_prediction}")
-    st.header("Reply to User")
-    st.write(f"Reply: {reply}")
+# ---- Light custom styling (CSS only, no logic) ----
+st.markdown(
+    """
+    <style>
+        .main-title {
+            font-size: 2.3rem;
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+        .subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .result-card {
+            padding: 1rem 1.2rem;
+            border-radius: 0.75rem;
+            background-color: rgba(120, 120, 120, 0.08);
+            border: 1px solid rgba(120, 120, 120, 0.15);
+            margin-bottom: 0.8rem;
+        }
+        .result-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 0.2rem;
+        }
+        .result-value {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        .reply-box {
+            padding: 1rem 1.2rem;
+            border-radius: 0.75rem;
+            background-color: rgba(16, 163, 127, 0.08);
+            border: 1px solid rgba(16, 163, 127, 0.25);
+            line-height: 1.5;
+        }
+        .priority-high { color: #dc2626; }
+        .priority-medium { color: #d97706; }
+        .priority-low { color: #16a34a; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ---- Sidebar ----
+with st.sidebar:
+    st.markdown("### 🎧 About")
+    st.write(
+        "This tool classifies an incoming customer query by **Category**, "
+        "**Intent**, and **Priority**, and drafts a suggested reply using an LLM."
+    )
+    st.markdown("---")
+    st.markdown("### 📝 Tips")
+    st.write(
+        "- Paste the query exactly as received for best accuracy.\n"
+        "- Longer, more detailed queries tend to classify better.\n"
+        "- The generated reply is a draft — review before sending."
+    )
+
+
+# ---- Header ----
+st.markdown('<div class="main-title">🎧 Customer Query Classifier</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="subtitle">Classify a customer query and generate a suggested reply in one click.</div>',
+    unsafe_allow_html=True,
+)
+
+# ---- Load models (with spinner instead of a silent blocking call) ----
+with st.spinner("Loading models..."):
+    models = load_models()
+
+# ---- Input area ----
+input_sms = st.text_area(
+    "Enter the customer query",
+    height=150,
+    placeholder="e.g. My order hasn't arrived yet and it's been two weeks. Can you help?",
+)
+
+col_btn, col_clear = st.columns([1, 5])
+with col_btn:
+    predict_clicked = st.button("🔍 Predict", type="primary", use_container_width=True)
+
+if predict_clicked:
+    if not input_sms or not input_sms.strip():
+        st.warning("Please enter a query before predicting.")
+    else:
+        with st.spinner("Classifying query and generating reply..."):
+            category_prediction = predict_label(models["category"], input_sms)
+            intent_prediction = predict_label(models["intent"], input_sms)
+            priority_prediction = predict_label(models["priority"], input_sms)
+            reply = reply_to_llm(input_sms)
+
+        st.markdown("### Predictions")
+
+        priority_class = {
+            "high": "priority-high",
+            "medium": "priority-medium",
+            "low": "priority-low",
+        }.get(str(priority_prediction).strip().lower(), "")
+
+        pred_col1, pred_col2, pred_col3 = st.columns(3)
+        with pred_col1:
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <div class="result-label">Category</div>
+                    <div class="result-value">{category_prediction}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with pred_col2:
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <div class="result-label">Intent</div>
+                    <div class="result-value">{intent_prediction}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with pred_col3:
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <div class="result-label">Priority</div>
+                    <div class="result-value {priority_class}">{priority_prediction}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("### 💬 Suggested Reply")
+        st.markdown(f'<div class="reply-box">{reply}</div>', unsafe_allow_html=True)
+
+        with st.expander("Copy reply text"):
+            st.code(reply, language=None)
