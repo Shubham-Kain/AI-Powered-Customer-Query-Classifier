@@ -1,0 +1,10 @@
+streamlit 
+langchain
+scikit-learn
+langchain-openai
+pandas
+numpy
+nltk
+joblib
+pickle
+scipy
