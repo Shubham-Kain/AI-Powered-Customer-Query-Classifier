@@ -20,6 +20,8 @@ It includes a training notebook (`train.ipynb`) for model development and a Stre
   - `Intent`: user intent label
   - `Priority`: urgency label
 
+The dataset is mainly related to the **Customer Support / Customer Service domain**, specifically for a **software/SaaS business**.
+
 This dataset is used to fit TF-IDF vectorizers, train classification models, and evaluate performance on held-out test data.
 
 ## Tech Stack
